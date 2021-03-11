@@ -1,7 +1,11 @@
 use std::collections::HashMap;
 use std::result::Result;
-use std::io::Read;
-use std::str::FromStr;
+use serde::{Deserialize, Serialize};
+// use serde_json::Result;
+
+//Before Serde
+// use std::io::Read; 
+// use std::str::FromStr;
 
 fn main() {
     let action = std::env::args().nth(1).expect("Please specify an action");
@@ -23,10 +27,19 @@ fn main() {
             Ok(_) => println!("todo saved"),
             Err(why) => println!("An error occured: {}", why),
         }
+    } else if action == "update" {
+        match todo.update(&item) {
+            None => println!("'{}' is not present in the list", item),
+            Some(_) => match todo.save() {
+                Ok(_) => println!("todo saved"),
+                Err(why) => println!("An error occured: {}", why),
+            },
+        }
     }
 
 }
 
+#[derive(Serialize, Deserialize)]
 struct Todo {
     // use rust built in HashMap to store key - val pairs
     map: HashMap<String, bool>,
@@ -34,13 +47,14 @@ struct Todo {
 
 impl Todo {
     fn new() -> Result<Todo, std::io::Error>{
-        let mut f = std::fs::OpenOptions::new()
+        let f = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
             .read(true)
-            .open("db.txt")?;
-        let mut content = String::new();
-        f.read_to_string(&mut content)?;
+            .open("db.json")?;
+            // .open("db.txt")?;
+        // let mut content = String::new();
+        // f.read_to_string(&mut content)?;
 
         // Option 1
 /*         let map: HashMap<String, bool> = content
@@ -51,7 +65,7 @@ impl Todo {
             .collect(); */
         
         //Option 2
-        let mut map = HashMap::new();
+/*         let mut map = HashMap::new();
         for entries in content.lines(){
             let mut values = entries.split('\t');
             let key = values.next().expect("No Key");
@@ -59,7 +73,16 @@ impl Todo {
             map.insert(String::from(key), bool::from_str(val).unwrap());
         }
 
-        Ok(Todo { map })
+        Ok(Todo { map }) */
+
+        // serialise json as Hashmap
+        match serde_json::from_reader(f) {
+            Ok(map) => Ok(Todo { map }),
+            Err(e) if e.is_eof() => Ok(Todo {
+                map: HashMap::new(),
+            }),
+            Err(e) => panic!("An error occured: {}",e),
+        }
     }
 
     fn insert(&mut self, key: String){
@@ -68,7 +91,8 @@ impl Todo {
         self.map.insert(key, true);
     }
 
-    fn save(self) -> Result<(), std::io::Error>{
+    // Before Serde ...
+/*     fn save(self) -> Result<(), std::io::Error>{
         let mut content = String::new();
         for  (k,v) in self.map {
             let record = format!("{}\t{}\n", k, v);
@@ -76,7 +100,26 @@ impl Todo {
         }
 
         std::fs::write("db.txt", content)
+    } */
+
+    fn save(self) -> Result<(), Box<dyn std::error::Error>> {
+        //open db.json
+        let f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open("db.json")?;
+        //write to file with serde
+        serde_json::to_writer_pretty(f, &self.map)?;
+        Ok(())
     }
+
+    fn update(&mut self, key: &String) -> Option<()>{
+        match self.map.get_mut(key) {
+            Some(v) => Some(*v = false),
+            None => None,
+        }
+    }
+
 
 }
 
